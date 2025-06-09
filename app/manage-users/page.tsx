@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react" // Import useCallback
 import { useAuth } from "@/lib/auth-context"
 import { ProtectedRoute } from "@/components/protected-route"
 import { Button } from "@/components/ui/button"
@@ -22,11 +22,11 @@ import { Plus, ArrowLeft, Trash2, Shield, Eye } from "lucide-react"
 import Link from "next/link"
 
 interface AppUser {
-  id: string
+  id: string | number; // Allow number as ID from database
   username: string
   email: string
   role: "admin" | "readonly"
-  password: string
+  // password: string // Avoid fetching or storing password on frontend
   createdAt: string
 }
 
@@ -40,93 +40,100 @@ export default function ManageUsers() {
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
 
-  useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const res = await fetch("/api/users");
-        const data = await res.json();
-        setUsers(data);
-      } catch (error) {
-        console.error("Error fetching users:", error);
+  // Function to fetch users from the backend
+  const fetchUsers = useCallback(async () => {
+    try {
+      const res = await fetch("/api/users");
+      if (!res.ok) {
+        throw new Error("Failed to fetch users");
       }
-    };
+      const data = await res.json();
+      setUsers(data);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      // Optionally show an alert or other error indicator
+    }
+  }, []); // fetchUsers does not depend on any external state, so dependencies array is empty
+
+
+  const isAdmin = currentUser?.role === "admin"
 
   const addUser = useCallback(async () => {
-    // Check for admin role before attempting to add user (frontend check for UI, backend enforces)
-    if (currentUser?.role !== "admin") {
-      alert("Please fill out all fields")
+    // Frontend validation checks
+    if (!newUsername.trim() || !newEmail.trim() || !newPassword.trim() || !confirmPassword.trim()) {
+        alert("Please fill out all fields");
+        return;
+    }
+
+    // Validate password confirmation
+    if (newPassword !== confirmPassword) {
+      alert("Passwords do not match")
+      return
+    }
+    // Validate password length
+    if (newPassword.length < 6) {
+      alert("Password must be at least 6 characters long")
       return
     }
 
+    // Frontend check if email already exists (optional, backend provides a more robust check)
+    const existingUser = users.find(
+      (user) => user.email.toLowerCase() === newEmail.trim().toLowerCase(),
+    );
+
+    if (existingUser) {
+      alert("A user with this email already exists.");
+      return;
+    }
+
     try {
-      // Validate password confirmation
-      if (newPassword !== confirmPassword) {
-        alert("Passwords do not match")
-        return
-      }
-      // Validate password length
-      if (newPassword.length < 6) {
-        alert("Password must be at least 6 characters long")
-        return
-      }
-
-      const newUser = {
- id: '', // Will be replaced by backend ID
-        username: newUsername,
-        email: newEmail,
-        role: newRole,
- password: newPassword,
-        createdAt: '', // Will be replaced by backend timestamp
-      }
-
       const res = await fetch("/api/users", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ username: newUsername, email: newEmail, password: newPassword, role: newRole }),
+        body: JSON.stringify({ username: newUsername.trim(), email: newEmail.trim(), password: newPassword, role: newRole }),
       });
 
       if (!res.ok) {
         const errorData = await res.json();
         throw new Error(errorData.error || "Failed to add user");
       }
-      // Refresh the list after adding a user
+
+      // Refresh the list after adding a user to get the latest data from the database
       await fetchUsers();
+
+      // Clear form fields and close dialog on success
       setNewUsername("")
       setNewEmail("")
       setNewPassword("")
       setConfirmPassword("")
       setNewRole("readonly")
-      setShowAddUser(false)
+      setShowAddUser(false); // Close dialog on success
+
+
     } catch (error: any) {
       console.error("Error adding user:", error)
       alert(`Error adding user: ${error.message || "Please try again."}`)
-    } finally {
- setShowAddUser(false) // Close dialog regardless of success/failure
+       setShowAddUser(false); // Close dialog on error as well
     }
-  }, [newUsername, newEmail, newPassword, confirmPassword, newRole, currentUser])
+  }, [newUsername, newEmail, newPassword, confirmPassword, newRole, fetchUsers, users]) // Added fetchUsers and users to dependencies
 
-  // Fetch users on component mount
+  // Fetch users on component mount and when currentUser changes
   useEffect(() => {
     fetchUsers();
-  }, [currentUser, users]); // Add users as a dependency
+  }, [fetchUsers]); // Depend on fetchUsers
 
-  const saveUsers = (updatedUsers: AppUser[]) => {
-    setUsers(updatedUsers)
-    // Remove local storage usage
-    // localStorage.setItem("app-users", JSON.stringify(updatedUsers));
-  }
 
   const deleteUser = useCallback(
-    async (userId: string) => {
+    async (userId: string | number) => { // Allow string or number for userId
       if (userId === currentUser?.id) {
         alert("You cannot delete your own account");
         return;
       }
+      // Frontend check for admin role (button is also disabled)
       if (currentUser?.role !== "admin") {
- // Redundant check as the button is disabled, but good practice
- alert("You do not have permission to delete users");
+        alert("You do not have permission to delete users");
         return;
       }
 
@@ -138,50 +145,63 @@ export default function ManageUsers() {
           const errorData = await res.json();
           throw new Error(errorData.error || "Failed to delete user");
         }
+        // Update local state after successful deletion
         setUsers(users.filter((user) => user.id !== userId));
       } catch (error: any) {
         console.error("Error deleting user:", error);
         alert(`Error deleting user: ${error.message || "Please try again."}`);
       }
     },
-    [currentUser, users] // Add users as a dependency
+    [currentUser, users] // Depend on currentUser and users
   );
 
   const toggleRole = useCallback(
-    if (userId === currentUser?.id) {
-      alert("You cannot change your own role")
-      return
-    }
-    const updatedUsers = users.map((user) =>
-      user.id === userId ? { ...user, role: user.role === "admin" ? "readonly" : "admin" } : user,
-    )
-    const userToUpdate = updatedUsers.find(user => user.id === userId);
-    if (!userToUpdate) {
-      return;
-    }
-
-    if (currentUser?.role !== "admin") {
-      alert("You do not have permission to change user roles");
-    }
-
-    try {
-      const res = await fetch(`/api/users/${userId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ role: userToUpdate.role }),
-      });
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Failed to update user role");
+    async (userId: string | number) => { // Allow string or number for userId
+      if (userId === currentUser?.id) {
+        alert("You cannot change your own role");
+        return;
       }
-      setUsers(updatedUsers); // Update local state only after successful API call
-    } catch (error: any) {
-      console.error("Error updating user role:", error);
-      alert(`Error updating user role: ${error.message || "Please try again."}`);
-    }
-  }, [currentUser, users])
+
+      // Frontend check for admin role (button is also disabled)
+      if (currentUser?.role !== "admin") {
+        alert("You do not have permission to change user roles");
+        return;
+      }
+
+      const userToUpdate = users.find(user => user.id === userId);
+      if (!userToUpdate) {
+        console.error("User not found for role toggle:", userId);
+        return;
+      }
+
+      const newRoleStatus = userToUpdate.role === "admin" ? "readonly" : "admin";
+
+      try {
+        const res = await fetch(`/api/users/${userId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ role: newRoleStatus }), // Send the new role
+        });
+        if (!res.ok) {
+          const errorData = await res.json();
+          throw new Error(errorData.error || "Failed to update user role");
+        }
+        // Update local state only after successful API call
+        setUsers(prevUsers =>
+            prevUsers.map(user =>
+                user.id === userId ? { ...user, role: newRoleStatus } : user
+            )
+        );
+      } catch (error: any) {
+        console.error("Error updating user role:", error);
+        alert(`Error updating user role: ${error.message || "Please try again."}`);
+      }
+    },
+    [currentUser, users] // Depend on currentUser and users
+  );
+
 
   return (
     <ProtectedRoute requireAdmin>
@@ -419,7 +439,7 @@ export default function ManageUsers() {
                             variant="outline"
                             size="sm"
                             onClick={() => toggleRole(user.id)}
-                            disabled={user.id === currentUser?.id}
+                            disabled={user.id === currentUser?.id || !isAdmin} // Disable if not admin
                           >
                             {user.role === "admin" ? "Make Read-only" : "Make Admin"}
                           </Button>
@@ -427,7 +447,7 @@ export default function ManageUsers() {
                             variant="ghost"
                             size="sm"
                             onClick={() => deleteUser(user.id)}
-                            disabled={user.id === currentUser?.id}
+                            disabled={user.id === currentUser?.id || !isAdmin} // Disable if not admin
                             className="text-red-600 hover:text-red-700 hover:bg-red-50"
                           >
                             <Trash2 className="w-4 h-4" />
