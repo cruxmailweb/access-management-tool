@@ -36,7 +36,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     if (users.length === 0) {
       // Create new user with random password (they'll need to reset it)
       const randomPassword = Math.random().toString(36).slice(-8)
-      const result = await query<any>(
+      const result: any = await query(
         `
         INSERT INTO users (username, email, password, role)
         VALUES (?, ?, ?, 'readonly')

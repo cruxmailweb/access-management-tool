@@ -3,15 +3,14 @@ import { getSessionFromCookie } from "@/lib/auth"
 import { query } from "@/lib/db"
 
 // Get application by ID
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } },
+) {
   try {
-    const session = await getSessionFromCookie()
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
     const applicationId = params.id
+    const token = request.cookies.get("session_token")?.value
+    const session = token ? await getSessionFromCookie(token) : null
 
     // Check if user has access to this application
     if (session.user.role !== "admin") {
@@ -29,11 +28,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     }
 
     // Get application details
-    const applications = await query<any[]>(
-      `
-      SELECT * FROM applications
-      WHERE id = ?
-    `,
+    const applications = await query<any[]>(`SELECT * FROM applications WHERE id = ?`,
       [applicationId],
     )
 
@@ -44,13 +39,10 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const app = applications[0]
 
     // Get users for the application
-    const users = await query<any[]>(
-      `
-      SELECT u.id, u.username as name, u.email, au.is_admin as isAdmin
-      FROM users u
-      JOIN application_users au ON u.id = au.user_id
-      WHERE au.application_id = ?
-    `,
+    const users = await query<any[]>(`
+    SELECT u.id, u.username as name, u.email, au.is_admin as isAdmin
+    FROM users u
+    JOIN application_users au ON u.id = au.user_id WHERE au.application_id = ?`,
       [applicationId],
     )
 
@@ -58,13 +50,10 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     // Get reminder for the application
     const reminders = await query<any[]>(
-      `
-      SELECT * FROM reminders
-      WHERE application_id = ? AND is_active = TRUE
-      LIMIT 1
-    `,
+      `SELECT * FROM reminders WHERE application_id = ? AND is_active = TRUE LIMIT 1`,
       [applicationId],
     )
+
 
     if (reminders.length > 0) {
       const reminder = reminders[0]
@@ -100,11 +89,12 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 }
 
 // Update application
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } },
+) {
   try {
-    const session = await getSessionFromCookie()
-
-    if (!session) {
+    if (!(await getSessionFromCookie())) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -120,12 +110,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     // Update application
-    await query(
-      `
-      UPDATE applications
-      SET name = ?, description = ?
-      WHERE id = ?
-    `,
+    await query(`UPDATE applications SET name = ?, description = ? WHERE id = ?`,
       [name, description || "", applicationId],
     )
 
@@ -137,11 +122,12 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 }
 
 // Delete application
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } },
+) {
   try {
-    const session = await getSessionFromCookie()
-
-    if (!session) {
+    if (!(await getSessionFromCookie())) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -152,11 +138,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     const applicationId = params.id
 
     // Delete application (cascade will delete related records)
-    await query(
-      `
-      DELETE FROM applications
-      WHERE id = ?
-    `,
+    await query(`DELETE FROM applications WHERE id = ?`,
       [applicationId],
     )
 

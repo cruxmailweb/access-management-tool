@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { useData } from "@/lib/data-context"
 import { ProtectedRoute } from "@/components/protected-route"
@@ -33,18 +33,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { Application } from "@/lib/types" // Assuming you have a type definition for Application
 
 interface User {
   id: string
   name: string
   email: string
   isAdmin: boolean
+  application_users_id?: number; // Add this to store the application_users id
 }
 
 export default function AccessManagement() {
   const { currentUser, logout } = useAuth()
-  const { applications, setApplications, getApplicationReminder } = useData()
-  const [selectedApp, setSelectedApp] = useState<any>(null)
+  const { applications, setApplications, getApplicationReminder, refreshData } = useData()
+  const [applications, setApplications] = useState<Application[]>([]) // Add local state for applications
+  const [selectedApp, setSelectedApp] = useState<Application | null>(null)
   const [showAddApp, setShowAddApp] = useState(false)
   const [showUserManagement, setShowUserManagement] = useState(false)
   const [newAppName, setNewAppName] = useState("")
@@ -53,29 +56,15 @@ export default function AccessManagement() {
   const [newUserEmail, setNewUserEmail] = useState("")
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid")
   const [showAppSettings, setShowAppSettings] = useState(false)
-  const [editingApp, setEditingApp] = useState<any>(null)
+  const [editingApp, setEditingApp] = useState<Application | null>(null)
   const [editAppName, setEditAppName] = useState("")
   const [editAppDescription, setEditAppDescription] = useState("")
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showImportExport, setShowImportExport] = useState(false)
 
+
   const isAdmin = currentUser?.role === "admin"
-
-  const addApplication = () => {
-    if (newAppName.trim()) {
-      const newApp = {
-        id: Date.now().toString(),
-        name: newAppName,
-        description: newAppDescription,
-        users: [],
-      }
-      setApplications([...applications, newApp])
       setNewAppName("")
-      setNewAppDescription("")
-      setShowAddApp(false)
-    }
-  }
-
   const addUser = () => {
     console.log("Add user clicked", { selectedApp, newUserName, newUserEmail })
 
@@ -112,57 +101,84 @@ export default function AccessManagement() {
       return
     }
 
+    // Prevent adding if selectedApp is null
+    if (!selectedApp) {
+        console.error("No application selected for adding user.");
+        alert("Error: No application selected.");
+        return;
+    }
+
     try {
-      const newUser: User = {
-        id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-        name: newUserName.trim(),
-        email: newUserEmail.trim(),
-        isAdmin: false,
+      const response = await fetch(`/api/applications/${selectedApp.id}/users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name: newUserName.trim(), email: newUserEmail.trim() }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to add user to application');
       }
 
-      console.log("Creating new user:", newUser)
+      // Assuming the backend returns the updated application with the new user
+      const updatedApp = await response.json();
+      updateApplicationsState(updatedApp); // Use a helper function to update state
+      clearAddUserForm(); // Use a helper function to clear form
 
-      const updatedApps = applications.map((app) =>
-        app.id === selectedApp.id ? { ...app, users: [...app.users, newUser] } : app,
-      )
-
-      setApplications(updatedApps)
-      setSelectedApp({ ...selectedApp, users: [...selectedApp.users, newUser] })
-      setNewUserName("")
-      setNewUserEmail("")
-
-      console.log("User added successfully")
     } catch (error) {
       console.error("Error adding user:", error)
       alert("Error adding user. Please try again.")
     }
   }
 
-  const toggleAdmin = (userId: string) => {
-    if (selectedApp) {
-      const updatedUsers = selectedApp.users.map((user: User) =>
-        user.id === userId ? { ...user, isAdmin: !user.isAdmin } : user,
-      )
-
-      const updatedApps = applications.map((app) => (app.id === selectedApp.id ? { ...app, users: updatedUsers } : app))
-
-      setApplications(updatedApps)
-      setSelectedApp({ ...selectedApp, users: updatedUsers })
+  // Function to remove a user from the selected application
+  const removeUser = async (userId: string) => {
+    if (!selectedApp || !selectedApp.id) {
+      console.error("No application selected or selected application has no ID for removing user.");
+      alert("Error: No application selected.");
+      return;
     }
-  }
 
-  const removeUser = (userId: string) => {
-    if (selectedApp) {
-      const updatedUsers = selectedApp.users.filter((user: User) => user.id !== userId)
+    try {
+      const response = await fetch(`/api/applications/${selectedApp.id}/users/${userId}`, {
+        method: 'DELETE',
+      });
 
-      const updatedApps = applications.map((app) => (app.id === selectedApp.id ? { ...app, users: updatedUsers } : app))
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to remove user from application');
+      }
 
-      setApplications(updatedApps)
-      setSelectedApp({ ...selectedApp, users: updatedUsers })
+      // Update the local state by removing the user
+      const updatedUsers = selectedApp.users.filter(user => user.id !== userId);
+      const updatedApp = { ...selectedApp, users: updatedUsers };
+      updateApplicationsState(updatedApp); // Use helper to update both applications list and selectedApp
+
+    } catch (error) {
+      console.error("Error removing user:", error);
+      alert("Error removing user. Please try again.");
     }
-  }
+  };
 
   const openUserManagement = (app: any) => {
+    setSelectedApp(app)
+    setShowUserManagement(true)
+  }
+
+  // Helper function to update applications state after API calls
+  const updateApplicationsState = (updatedApp: Application) => {
+      setApplications(prevApps =>
+          prevApps.map(app => (app.id === updatedApp.id ? updatedApp : app))
+      );
+      setSelectedApp(updatedApp);
+  };
+
+  // Helper function to clear the add user form
+  const clearAddUserForm = () => {
+      setNewUserName("");
+      setNewUserEmail("");
     setSelectedApp(app)
     setShowUserManagement(true)
   }
@@ -196,39 +212,68 @@ export default function AccessManagement() {
     setShowAppSettings(true)
   }
 
-  const updateApplication = () => {
+  const updateApplication = async () => {
     if (editingApp && editAppName.trim()) {
-      const updatedApps = applications.map((app) =>
-        app.id === editingApp.id ? { ...app, name: editAppName, description: editAppDescription } : app,
-      )
-      setApplications(updatedApps)
-      setShowAppSettings(false)
+      try {
+        const res = await fetch(`/api/applications/${editingApp.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ name: editAppName, description: editAppDescription }),
+        });
+
+        if (!res.ok) {
+          throw new Error('Failed to update application');
+        }
+
+        const updatedApps = applications.map((app) =>
+          app.id === editingApp.id ? { ...app, name: editAppName, description: editAppDescription } : app,
+        );
+        setApplications(updatedApps);
+        setShowAppSettings(false);
+      } catch (error) {
+        console.error('Error updating application:', error);
+      }
     }
+
   }
 
-  const deleteApplication = () => {
+  const deleteApplication = async () => {
     if (editingApp) {
-      const updatedApps = applications.filter((app) => app.id !== editingApp.id)
-      setApplications(updatedApps)
-      setShowDeleteConfirm(false)
-      setShowAppSettings(false)
+      try {
+        const res = await fetch(`/api/applications/${editingApp.id}`, {
+          method: 'DELETE',
+        });
+
+        if (!res.ok) {
+          throw new Error('Failed to delete application');
+        }
+
+        const updatedApps = applications.filter((app) => app.id !== editingApp.id);
+        setApplications(updatedApps);
+        setShowDeleteConfirm(false);
+        setShowAppSettings(false);
+      } catch (error) {
+        console.error('Error deleting application:', error);
+      }
     }
   }
 
   // Handle CSV import
   const handleImportUsers = (importedUsers: Omit<User, "id">[]) => {
-    if (!selectedApp) return
-
-    // Create new user objects with IDs
-    const newUsers = importedUsers.map((user) => ({
-      ...user,
-      id: Date.now() + Math.random().toString(36).substring(2, 9), // Generate unique ID
-    }))
+    if (!selectedApp || !selectedApp.id) {
+ return;
+    }
 
     // Filter out duplicates based on email
     const existingEmails = new Set(selectedApp.users.map((user: User) => user.email.toLowerCase()))
-    const uniqueNewUsers = newUsers.filter((user) => !existingEmails.has(user.email.toLowerCase()))
+    const uniqueNewUsers = importedUsers.filter((user) => !existingEmails.has(user.email.toLowerCase()))
 
+ if (uniqueNewUsers.length === 0) {
+ alert("No new users to import (all emails already exist in this application).");
+ return;
+    }
     // Update application with new users
     const updatedUsers = [...selectedApp.users, ...uniqueNewUsers]
     const updatedApps = applications.map((app) => (app.id === selectedApp.id ? { ...app, users: updatedUsers } : app))
@@ -236,6 +281,34 @@ export default function AccessManagement() {
     setApplications(updatedApps)
     setSelectedApp({ ...selectedApp, users: updatedUsers })
   }
+  const handleImportUsers = async (importedUsers: Omit<User, "id">[]) => {
+    if (!selectedApp || !selectedApp.id) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/applications/${selectedApp.id}/users/import`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(importedUsers),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to import users');
+      }
+
+      // Refetch application data to update the state with imported users
+      await refreshData();
+      alert('Users imported successfully!');
+
+    } catch (error) {
+      console.error("Error importing users:", error);
+      alert("Error importing users. Please check the CSV format and try again.");
+    }
+  };
 
   return (
     <ProtectedRoute>

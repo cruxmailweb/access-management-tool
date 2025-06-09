@@ -12,8 +12,8 @@ export async function GET(request: NextRequest) {
     // }
 
     const token = request.cookies.get('session_token')?.value
-    const session = token ? await getSessionFromCookie(token) : null
-  
+    const session = token ? await getSessionFromCookie(token) : null;
+
     if (!session) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
         WHERE au.application_id = ?
       `,
         [app.id],
-      )
+      );
 
       app.users = users
 
@@ -70,7 +70,6 @@ export async function GET(request: NextRequest) {
         WHERE r.application_id = ? AND r.is_active = TRUE
         LIMIT 1
       `,
-        [app.id],
       )
 
       if (reminders.length > 0) {
@@ -84,7 +83,7 @@ export async function GET(request: NextRequest) {
           WHERE reminder_id = ?
         `,
           [reminder.id],
-        )
+        );
 
         app.reminder = {
           id: reminder.id,
@@ -107,11 +106,10 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Create a new application
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSessionFromCookie()
-
+    const token = request.cookies.get('session_token')?.value
+    const session = token ? await getSessionFromCookie(token) : null;
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -126,6 +124,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Application name is required" }, { status: 400 })
     }
 
+
+    // Fetch the newly created application with its users and reminder status
+    const newApp = await query<any[]>(`
+      SELECT a.*, 
+        (SELECT COUNT(*) FROM application_users WHERE application_id = a.id) as user_count,
+        (SELECT COUNT(*) FROM application_users WHERE application_id = a.id AND is_admin = TRUE) as admin_count
+      FROM applications a
+      WHERE a.id = ?
+    `, [applicationId]);
+
+    if (newApp.length === 0) {
+      return NextResponse.json({ error: "Failed to fetch created application" }, { status: 500 });
+    }
+
+    // Attach user information to the new app object (since the user was just added)
+    newApp[0].users = [{ id: session.user.id, name: session.user.username, email: session.user.email, isAdmin: true }];
+    newApp[0].reminder = null; // No reminder initially
+
+    return NextResponse.json({
+ message: "Application created successfully",
+ application: newApp[0]
+    })
+  } catch (error) {
     // Insert application
     const result = await query<any>(
       `
@@ -145,22 +166,6 @@ export async function POST(request: NextRequest) {
     `,
       [applicationId, session.user.id],
     )
-
-    return NextResponse.json({
-      id: applicationId,
-      name,
-      description,
-      users: [
-        {
-          id: session.user.id,
-          name: session.user.username,
-          email: session.user.email,
-          isAdmin: true,
-        },
-      ],
-      created_at: new Date(),
-    })
-  } catch (error) {
     console.error("Error creating application:", error)
     return NextResponse.json({ error: "Failed to create application" }, { status: 500 })
   }

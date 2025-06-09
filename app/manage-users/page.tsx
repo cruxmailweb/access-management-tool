@@ -41,59 +41,113 @@ export default function ManageUsers() {
   const [confirmPassword, setConfirmPassword] = useState("")
 
   useEffect(() => {
-    const storedUsers = localStorage.getItem("app-users")
-    if (storedUsers) {
-      setUsers(JSON.parse(storedUsers))
+    const fetchUsers = async () => {
+      try {
+        const res = await fetch("/api/users");
+        const data = await res.json();
+        setUsers(data);
+      } catch (error) {
+        console.error("Error fetching users:", error);
+      }
+    };
+
+  const addUser = useCallback(async () => {
+    // Check for admin role before attempting to add user (frontend check for UI, backend enforces)
+    if (currentUser?.role !== "admin") {
+      alert("Please fill out all fields")
+      return
     }
-  }, [])
 
-  const saveUsers = (updatedUsers: AppUser[]) => {
-    setUsers(updatedUsers)
-    localStorage.setItem("app-users", JSON.stringify(updatedUsers))
-  }
-
-  const addUser = () => {
-    if (newUsername.trim() && newEmail.trim() && newPassword.trim()) {
+    try {
       // Validate password confirmation
       if (newPassword !== confirmPassword) {
         alert("Passwords do not match")
         return
       }
-
       // Validate password length
       if (newPassword.length < 6) {
         alert("Password must be at least 6 characters long")
         return
       }
 
-      const newUser: AppUser = {
-        id: Date.now().toString(),
+      const newUser = {
+ id: '', // Will be replaced by backend ID
         username: newUsername,
         email: newEmail,
         role: newRole,
-        password: newPassword, // In production, this should be hashed
-        createdAt: new Date().toISOString(),
+ password: newPassword,
+        createdAt: '', // Will be replaced by backend timestamp
       }
-      saveUsers([...users, newUser])
+
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username: newUsername, email: newEmail, password: newPassword, role: newRole }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to add user");
+      }
+      // Refresh the list after adding a user
+      await fetchUsers();
       setNewUsername("")
       setNewEmail("")
       setNewPassword("")
       setConfirmPassword("")
       setNewRole("readonly")
       setShowAddUser(false)
+    } catch (error: any) {
+      console.error("Error adding user:", error)
+      alert(`Error adding user: ${error.message || "Please try again."}`)
+    } finally {
+ setShowAddUser(false) // Close dialog regardless of success/failure
     }
+  }, [newUsername, newEmail, newPassword, confirmPassword, newRole, currentUser])
+
+  // Fetch users on component mount
+  useEffect(() => {
+    fetchUsers();
+  }, [currentUser, users]); // Add users as a dependency
+
+  const saveUsers = (updatedUsers: AppUser[]) => {
+    setUsers(updatedUsers)
+    // Remove local storage usage
+    // localStorage.setItem("app-users", JSON.stringify(updatedUsers));
   }
 
-  const deleteUser = (userId: string) => {
-    if (userId === currentUser?.id) {
-      alert("You cannot delete your own account")
-      return
-    }
-    const updatedUsers = users.filter((user) => user.id !== userId)
-    saveUsers(updatedUsers)
-  }
+  const deleteUser = useCallback(
+    async (userId: string) => {
+      if (userId === currentUser?.id) {
+        alert("You cannot delete your own account");
+        return;
+      }
+      if (currentUser?.role !== "admin") {
+ // Redundant check as the button is disabled, but good practice
+ alert("You do not have permission to delete users");
+        return;
+      }
 
-  const toggleRole = (userId: string) => {
+      try {
+        const res = await fetch(`/api/users/${userId}`, {
+          method: "DELETE",
+        });
+        if (!res.ok) {
+          const errorData = await res.json();
+          throw new Error(errorData.error || "Failed to delete user");
+        }
+        setUsers(users.filter((user) => user.id !== userId));
+      } catch (error: any) {
+        console.error("Error deleting user:", error);
+        alert(`Error deleting user: ${error.message || "Please try again."}`);
+      }
+    },
+    [currentUser, users] // Add users as a dependency
+  );
+
+  const toggleRole = useCallback(
     if (userId === currentUser?.id) {
       alert("You cannot change your own role")
       return
@@ -101,8 +155,33 @@ export default function ManageUsers() {
     const updatedUsers = users.map((user) =>
       user.id === userId ? { ...user, role: user.role === "admin" ? "readonly" : "admin" } : user,
     )
-    saveUsers(updatedUsers)
-  }
+    const userToUpdate = updatedUsers.find(user => user.id === userId);
+    if (!userToUpdate) {
+      return;
+    }
+
+    if (currentUser?.role !== "admin") {
+      alert("You do not have permission to change user roles");
+    }
+
+    try {
+      const res = await fetch(`/api/users/${userId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ role: userToUpdate.role }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to update user role");
+      }
+      setUsers(updatedUsers); // Update local state only after successful API call
+    } catch (error: any) {
+      console.error("Error updating user role:", error);
+      alert(`Error updating user role: ${error.message || "Please try again."}`);
+    }
+  }, [currentUser, users])
 
   return (
     <ProtectedRoute requireAdmin>
