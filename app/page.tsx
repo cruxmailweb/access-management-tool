@@ -64,12 +64,8 @@ export default function AccessManagement() {
 
 
   const isAdmin = currentUser?.role === "admin"
-      setNewAppName("")
-  const addUser = () => {
- const addUser = async () => {
- console.log("Add user clicked", { selectedApp, newUserName, newUserEmail });
 
-    if (!selectedApp) {
+  const addUser = async () => {
       console.error("No selected app")
       alert("No application selected")
       return
@@ -178,10 +174,8 @@ export default function AccessManagement() {
 
   // Helper function to clear the add user form
   const clearAddUserForm = () => {
-      setNewUserName("");
-      setNewUserEmail("");
-    setSelectedApp(app)
-    setShowUserManagement(true)
+    setNewUserName("");
+    setNewUserEmail("");
   }
 
   const handleReminderSet = (applicationId: string, reminderData: any) => {
