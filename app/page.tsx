@@ -66,7 +66,8 @@ export default function AccessManagement() {
   const isAdmin = currentUser?.role === "admin"
       setNewAppName("")
   const addUser = () => {
-    console.log("Add user clicked", { selectedApp, newUserName, newUserEmail })
+ const addUser = async () => {
+ console.log("Add user clicked", { selectedApp, newUserName, newUserEmail });
 
     if (!selectedApp) {
       console.error("No selected app")
