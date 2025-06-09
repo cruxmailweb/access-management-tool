@@ -59,8 +59,8 @@ export async function verifySessionToken(token: string): Promise<Session | null>
 }
 
 // Set session cookie
-export function setSessionCookie(token: string) {
-  cookies().set("session_token", token, {
+export async function setSessionCookie(token: string) {
+  await cookies().set("session_token", token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -71,7 +71,7 @@ export function setSessionCookie(token: string) {
 
 // Get session from cookie
 export async function getSessionFromCookie(): Promise<Session | null> {
-  const token = (await cookies().get("session_token"))?.value
+  const token = cookies().get("session_token")?.value
   if (!token) return null
 
   return verifySessionToken(token)
