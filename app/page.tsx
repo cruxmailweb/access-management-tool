@@ -46,7 +46,7 @@ interface User {
 export default function AccessManagement() {
   const { currentUser, logout } = useAuth()
   const { applications, setApplications, getApplicationReminder, refreshData } = useData()
-  const [applications, setApplications] = useState<Application[]>([]) // Add local state for applications
+  // Removed duplicate useState declaration for applications and setApplications
   const [selectedApp, setSelectedApp] = useState<Application | null>(null)
   const [showAddApp, setShowAddApp] = useState(false)
   const [showUserManagement, setShowUserManagement] = useState(false)
@@ -62,48 +62,72 @@ export default function AccessManagement() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showImportExport, setShowImportExport] = useState(false)
 
+  // Fetch applications on component mount (This is now handled by the useData hook's useEffect)
+  // useEffect(() => {
+  //   const fetchApplications = async () => {
+  //     const res = await fetch('/api/applications');
+  //     const data = await res.json();
+  //     setApplications(data);
+  //   };
+  //   fetchApplications();
+  // }, []);
+
 
   const isAdmin = currentUser?.role === "admin"
 
+  const addApplication = async () => {
+    if (!newAppName.trim()) {
+      alert("Application name is required");
+      return;
+    }
+
+    try {
+      const newApp = await addApplication({ name: newAppName.trim(), description: newAppDescription.trim() });
+      // The setApplications and setShowAddApp is handled within the addApplication function in useData
+      clearAddUserForm(); // Clear the add application form
+    } catch (error) {
+      console.error("Error adding application:", error);
+      alert("Error adding application. Please try again.");
+    }
+  };
+
+
   const addUser = async () => {
-      console.error("No selected app")
-      alert("No application selected")
-      return
+      // Removed stray console.error and alert
+
+    if (!selectedApp) {
+      console.error("No selected app for adding user.");
+      alert("Error: No application selected.");
+      return;
     }
 
     if (!newUserName.trim()) {
-      alert("Please enter a user name")
-      return
+      alert("Please enter a user name");
+      return;
     }
 
     if (!newUserEmail.trim()) {
-      alert("Please enter a user email")
-      return
+      alert("Please enter a user email");
+      return;
     }
 
     // Check if email is valid
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(newUserEmail.trim())) {
-      alert("Please enter a valid email address")
-      return
+      alert("Please enter a valid email address");
+      return;
     }
 
-    // Check if user already exists
+    // Check if user already exists in the selected application (This check might need to be done on the backend for accuracy)
     const existingUser = selectedApp.users.find(
       (user: User) => user.email.toLowerCase() === newUserEmail.trim().toLowerCase(),
-    )
+    );
 
     if (existingUser) {
-      alert("A user with this email already exists")
-      return
+      alert("A user with this email already exists in this application");
+      return;
     }
 
-    // Prevent adding if selectedApp is null
-    if (!selectedApp) {
-        console.error("No application selected for adding user.");
-        alert("Error: No application selected.");
-        return;
-    }
 
     try {
       const response = await fetch(`/api/applications/${selectedApp.id}/users`, {
@@ -121,7 +145,8 @@ export default function AccessManagement() {
 
       // Assuming the backend returns the updated application with the new user
       const updatedApp = await response.json();
-      updateApplicationsState(updatedApp); // Use a helper function to update state
+      // Instead of directly updating selectedApp, refresh all data to ensure consistency
+      await refreshData(); // Assuming refreshData fetches applications with their users
       clearAddUserForm(); // Use a helper function to clear form
 
     } catch (error) {
@@ -148,10 +173,8 @@ export default function AccessManagement() {
         throw new Error(errorData.error || 'Failed to remove user from application');
       }
 
-      // Update the local state by removing the user
-      const updatedUsers = selectedApp.users.filter(user => user.id !== userId);
-      const updatedApp = { ...selectedApp, users: updatedUsers };
-      updateApplicationsState(updatedApp); // Use helper to update both applications list and selectedApp
+      // Refetch application data to update the state after deletion
+      await refreshData(); // Assuming refreshData fetches applications with their users
 
     } catch (error) {
       console.error("Error removing user:", error);
@@ -222,14 +245,16 @@ export default function AccessManagement() {
           throw new Error('Failed to update application');
         }
 
-        const updatedApps = applications.map((app) =>
-          app.id === editingApp.id ? { ...app, name: editAppName, description: editAppDescription } : app,
-        );
-        setApplications(updatedApps);
+        // Instead of directly updating local state, refresh data from backend
+        await refreshData(); // Assuming refreshData updates the applications state
         setShowAppSettings(false);
+
       } catch (error) {
         console.error('Error updating application:', error);
+        alert('Error updating application. Please try again.');
       }
+    } else {
+        alert('Application name is required.');
     }
 
   }
@@ -245,40 +270,30 @@ export default function AccessManagement() {
           throw new Error('Failed to delete application');
         }
 
-        const updatedApps = applications.filter((app) => app.id !== editingApp.id);
-        setApplications(updatedApps);
+        // Instead of directly updating local state, refresh data from backend
+        await refreshData(); // Assuming refreshData updates the applications state
         setShowDeleteConfirm(false);
         setShowAppSettings(false);
+
       } catch (error) {
         console.error('Error deleting application:', error);
+        alert('Error deleting application. Please try again.');
       }
     }
   }
 
   // Handle CSV import
-  const handleImportUsers = (importedUsers: Omit<User, "id">[]) => {
-    if (!selectedApp || !selectedApp.id) {
- return;
-    }
-
-    // Filter out duplicates based on email
-    const existingEmails = new Set(selectedApp.users.map((user: User) => user.email.toLowerCase()))
-    const uniqueNewUsers = importedUsers.filter((user) => !existingEmails.has(user.email.toLowerCase()))
-
- if (uniqueNewUsers.length === 0) {
- alert("No new users to import (all emails already exist in this application).");
- return;
-    }
-    // Update application with new users
-    const updatedUsers = [...selectedApp.users, ...uniqueNewUsers]
-    const updatedApps = applications.map((app) => (app.id === selectedApp.id ? { ...app, users: updatedUsers } : app))
-
-    setApplications(updatedApps)
-    setSelectedApp({ ...selectedApp, users: updatedUsers })
-  }
   const handleImportUsers = async (importedUsers: Omit<User, "id">[]) => {
     if (!selectedApp || !selectedApp.id) {
+      console.error("No application selected for importing users.");
+      alert("Error: No application selected.");
       return;
+    }
+
+    // Basic validation for imported users
+    if (!importedUsers || importedUsers.length === 0) {
+        alert("No users to import.");
+        return;
     }
 
     try {
@@ -296,7 +311,7 @@ export default function AccessManagement() {
       }
 
       // Refetch application data to update the state with imported users
-      await refreshData();
+      await refreshData(); // Assuming refreshData fetches applications with their users
       alert('Users imported successfully!');
 
     } catch (error) {
@@ -304,6 +319,49 @@ export default function AccessManagement() {
       alert("Error importing users. Please check the CSV format and try again.");
     }
   };
+
+
+  // Helper function to toggle admin status (needs backend implementation)
+  const toggleAdmin = async (userId: string) => {
+      if (!selectedApp || !selectedApp.id) {
+          console.error("No application selected for toggling admin status.");
+          alert("Error: No application selected.");
+          return;
+      }
+
+      // Find the user in the selected application
+      const userToToggle = selectedApp.users.find(user => user.id === userId);
+      if (!userToToggle) {
+          console.error("User not found in selected application:", userId);
+          alert("Error: User not found.");
+          return;
+      }
+
+      const newAdminStatus = !userToToggle.isAdmin;
+
+      try {
+          const response = await fetch(`/api/applications/${selectedApp.id}/users/${userId}`, {
+              method: 'PUT', // Assuming PUT is used for updating user within application
+              headers: {
+                  'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ isAdmin: newAdminStatus }),
+          });
+
+          if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Failed to toggle admin status');
+          }
+
+          // Refetch application data to update the state
+          await refreshData(); // Assuming refreshData fetches applications with their users
+
+      } catch (error) {
+          console.error("Error toggling admin status:", error);
+          alert("Error toggling admin status. Please try again.");
+      }
+  };
+
 
   return (
     <ProtectedRoute>
