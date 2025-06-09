@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     const token = await createSessionToken(user)
 
     // Set session cookie
-    setSessionCookie(token)
+    await setSessionCookie(token)
 
     return NextResponse.json({
       success: true,
