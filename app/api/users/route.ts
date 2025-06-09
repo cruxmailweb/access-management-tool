@@ -5,7 +5,7 @@ import { query } from "@/lib/db"
 // Get all users
 export async function GET() {
   try {
-    const session = await getSessionFromCookie()
+    const session = await getSessionFromCookie();
 
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
