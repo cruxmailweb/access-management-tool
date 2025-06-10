@@ -3,7 +3,7 @@ import { SignJWT, jwtVerify } from "jose"
 import { type NextRequest, NextResponse } from "next/server"
 import { query } from "./db"
 
-// Types
+import { updateUserSessionExpiry } from "./db"
 export interface User {
   id: number
   username: string
@@ -22,7 +22,7 @@ const SECRET_KEY = process.env.JWT_SECRET_KEY || "your-secret-key-change-this-in
 const KEY = new TextEncoder().encode(SECRET_KEY)
 
 // Session duration - 8 hours
-const SESSION_DURATION = 8 * 60 * 60
+const SESSION_DURATION = 15 * 60 // 15 minutes
 
 // Create a session token
 export async function createSessionToken(user: User): Promise<string> {
@@ -101,22 +101,47 @@ export async function verifyPassword(password: string, hashedPassword: string): 
 export async function authMiddleware(req: NextRequest) {
   const session = await getSessionFromCookie()
 
-  if (!session || Date.now() / 1000 > session.expires) {
+ if (!session) {
+ return NextResponse.redirect(new URL("/login", req.url));
+  }
+
+  // Check if session is expired
+  if (Date.now() / 1000 > session.expires) {
     clearSessionCookie()
     return NextResponse.redirect(new URL("/login", req.url))
   }
 
-  return NextResponse.next()
+  // Update session expiry time
+  session.expires = Math.floor(Date.now() / 1000) + SESSION_DURATION;
+
+  // Update session in database with new expiry time
+  await updateUserSessionExpiry(session.user.id, session.expires);
+
+  // Create a new token with the updated session
+  const newToken = await createSessionToken(session.user);
+
+  // Set a new cookie with the updated token and maxAge.
+  await setSessionCookie(newToken);
+
+ return NextResponse.next()
 }
 
 // Admin middleware
 export async function adminMiddleware(req: NextRequest) {
   const session = await getSessionFromCookie()
 
-  if (!session || Date.now() / 1000 > session.expires) {
-    clearSessionCookie()
+ if (!session) {
+ return NextResponse.redirect(new URL("/login", req.url));
+  }
+
+  // Check if session is expired
+  if (Date.now() / 1000 > session.expires) {
+    await clearSessionCookie(); // Clear expired session
     return NextResponse.redirect(new URL("/login", req.url))
   }
+
+  // Update session expiry time
+  session.expires = Math.floor(Date.now() / 1000) + SESSION_DURATION;
 
   if (session.user.role !== "admin") {
     return NextResponse.redirect(new URL("/", req.url))

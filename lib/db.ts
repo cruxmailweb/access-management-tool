@@ -23,6 +23,18 @@ export async function initDb() {
   }
 }
 
+export async function updateUserSessionExpiry(userId: number, expiresAt: number): Promise<void> {
+  try {
+    await query(
+      "UPDATE users SET session_expires_at = FROM_UNIXTIME(?) WHERE id = ?",
+      [expiresAt, userId]
+    );
+  } catch (error) {
+    console.error("Error updating user session expiry:", error);
+    throw error;
+  }
+}
+
 export async function getConnection() {
   if (!pool) {
     await initDb()
