@@ -60,7 +60,8 @@ export async function verifySessionToken(token: string): Promise<Session | null>
 // Set session cookie
 export async function setSessionCookie(token: string) {
   const { cookies } = await import("next/headers");
-  cookies().set("session_token", token, {
+  const cookiesInstance = await cookies(); // Await the cookies() call
+  cookiesInstance.set("session_token", token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -72,7 +73,8 @@ export async function setSessionCookie(token: string) {
 // Get session from cookie
 export async function getSessionFromCookie(): Promise<Session | null> {
   const { cookies } = await import("next/headers");
-  const token = cookies().get("session_token")?.value;
+  const cookiesInstance = await cookies();
+  const token = cookiesInstance.get("session_token")?.value;
   if (!token) return null
 
   return verifySessionToken(token)
@@ -81,7 +83,8 @@ export async function getSessionFromCookie(): Promise<Session | null> {
 // Clear session cookie
 export async function clearSessionCookie() {
   const { cookies } = await import("next/headers");
-  cookies().delete("session_token");
+  const cookiesInstance = await cookies();
+  cookiesInstance.delete("session_token");
 }
 
 // Hash password
