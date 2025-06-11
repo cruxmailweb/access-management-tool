@@ -22,7 +22,7 @@ const SECRET_KEY = process.env.JWT_SECRET_KEY || "your-secret-key-change-this-in
 const KEY = new TextEncoder().encode(SECRET_KEY)
 
 // Session duration - 8 hours
-const SESSION_DURATION = 15 * 60 // 15 minutes
+const SESSION_DURATION = 8 * 60 * 60 // 8 hours
 
 // Create a session token
 export async function createSessionToken(user: User): Promise<string> {
