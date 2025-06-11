@@ -64,12 +64,22 @@ export async function setSessionCookie(token: string) {
   const { cookies } = await import("next/headers");
   const cookiesInstance = await cookies(); // Await the cookies() call
   cookiesInstance.set("session_token", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: SESSION_DURATION,
+    //httpOnly: true,
+    //secure: process.env.NODE_ENV === "production",
+    //sameSite: "lax",
+    //maxAge: SESSION_DURATION,
+    maxAge: 60 * 60 * 24 * 365,
     path: "/",
   });
+  cookiesInstance.set("secondCookie", "hello", {
+    //httpOnly: true,
+    //secure: process.env.NODE_ENV === "production",
+    //sameSite: "lax",
+    //maxAge: SESSION_DURATION,
+    maxAge: 60 * 60 * 24 * 365,
+    path: "/",
+  });
+  cookiesInstance.set("thirdCookie", "third", {});
   console.error("[ROHIT] Set Session Token Inside END - Line 73 auth.ts, cookiesInstance=", cookiesInstance);
 }
 
