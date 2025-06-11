@@ -59,6 +59,8 @@ export async function verifySessionToken(token: string): Promise<Session | null>
 
 // Set session cookie
 export async function setSessionCookie(token: string) {
+  console.error("[ROHIT] Set Session Token Inside Start - Line 62 auth.ts", token);
+
   const { cookies } = await import("next/headers");
   const cookiesInstance = await cookies(); // Await the cookies() call
   cookiesInstance.set("session_token", token, {
@@ -67,7 +69,8 @@ export async function setSessionCookie(token: string) {
     sameSite: "lax",
     maxAge: SESSION_DURATION,
     path: "/",
-  })
+  });
+  console.error("[ROHIT] Set Session Token Inside END - Line 73 auth.ts, cookiesInstance=", cookiesInstance);
 }
 
 // Get session from cookie
@@ -76,8 +79,10 @@ export async function getSessionFromCookie(): Promise<Session | null> {
   const cookiesInstance = await cookies();
   const token = cookiesInstance.get("session_token")?.value;
   if (!token) return null
-
-  return verifySessionToken(token)
+  console.error("[ROHIT] Checking if CookieOne exists- Line 82 auth.ts");
+  const token2 = cookiesInstance.get("CookieOne")?.value;
+  console.error("[ROHIT] Checking if CookieOne exists- Line 82 auth.ts, token2=", token2);
+  
 }
 
 // Clear session cookie
@@ -85,6 +90,8 @@ export async function clearSessionCookie() {
   const { cookies } = await import("next/headers");
   const cookiesInstance = await cookies();
   cookiesInstance.delete("session_token");
+  console.error("[ROHIT] Inside Clear Session - Line 93 auth.ts");
+
 }
 
 // Hash password
@@ -122,8 +129,9 @@ export async function authMiddleware(req: NextRequest) {
 
   // Set a new cookie with the updated token and maxAge.
   await setSessionCookie(newToken);
+  console.error("[ROHIT] Session Token SET from auth.ts Line 124:", newToken)
 
- return NextResponse.next()
+  return NextResponse.next()
 }
 
 // Admin middleware

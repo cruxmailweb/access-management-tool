@@ -17,10 +17,12 @@ export async function POST(request: NextRequest) {
 
     // Create session token
     const token = await createSessionToken(user)
+    console.error("[ROHIT] Session Token Created:", token)
 
     // Set session cookie
     await setSessionCookie(token)
-
+    console.error("[ROHIT] Session Token SET:", token)
+    
     return NextResponse.json({
       success: true,
       user: {
