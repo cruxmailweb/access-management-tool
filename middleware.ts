@@ -22,7 +22,7 @@ export async function middleware(request: NextRequest) {
 
   // For deleting cookies:
   const response = NextResponse.next()
-  response.cookies.delete('session_token')
+  response.cookies.delete('CookieOne')
   return response
 
   // Public routes that don't require authentication
